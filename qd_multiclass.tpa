@@ -27,10 +27,10 @@ DEFINE_PATCH_FUNCTION FJ_SPL_ITM_REINDEX BEGIN
   READ_LONG 0x6a fb // Feature block table offset
   READ_SHORT 0x70 fc // Feature block count
   PATCH_IF ((hf > fb) AND (hc > 0)) BEGIN // Ardanis: fixed "hc > 1" to "hc > 0"
-    READ_ASCII hf ~eh~ ELSE ~fail~ (hs * hc)
+    READ_ASCII hf eh ELSE ~fail~ (hs * hc)
     PATCH_IF (~%eh%~ STR_EQ ~fail~) BEGIN
       WHILE ((~%eh%~ STR_EQ ~fail~) AND (hc > 0)) BEGIN
-        READ_ASCII hf ~eh~ ELSE ~fail~ (hs * hc)
+        READ_ASCII hf eh ELSE ~fail~ (hs * hc)
         SET hc -= 1
       END
     END
@@ -77,7 +77,7 @@ INT_VAR
   copy_header     = 0
   insert_point    = ~-1~
 STR_VAR
-  icon  = ~~
+  icon            = ~~
 RET
   insert_point
 BEGIN
@@ -164,6 +164,42 @@ ACTION_IF (NOT FILE_EXISTS_IN_GAME ~qd_multi.qd~) BEGIN
   END
   ACTION_PHP_EACH base_clabs AS resref => type BEGIN
     ACTION_IF (NOT FILE_CONTAINS_EVALUATED (~%resref%.2DA~ ~^QD_MULTI[ %TAB%]~)) BEGIN
+      // padding table so that number of CLAB columns is consistent for each row
+      OUTER_SET columns = 0
+      COPY_EXISTING ~%resref%.2DA~ ~override~
+        READ_2DA_ENTRIES_NOW rows 1
+        READ_2DA_ENTRY_FORMER rows 1 0 default
+        FOR (col = 41; col < 51; ++col) BEGIN // assuming first 40 columns are always defined
+          TEXT_SPRINT string ~$ $~ // header and default row are ignored
+          SET col2 = col - 1  // compensate for data header row being short by one entry
+          PATCH_IF (VARIABLE_IS_SET $rows(~2~ ~%col2%~)) BEGIN
+            TEXT_SPRINT string ~%string% $~
+          END ELSE BEGIN
+            TEXT_SPRINT string ~%string% %col%~
+          END
+          FOR (row = 3; row < rows; ++row) BEGIN
+            PATCH_IF (VARIABLE_IS_SET $rows(~%row%~ ~%col%~)) BEGIN
+              TEXT_SPRINT string ~%string% $~
+            END ELSE BEGIN
+              SET col2 = col - 10 // cloning a previous entry to keep table data consistent
+              TEXT_SPRINT value $rows(~%row%~ ~%col2%~)
+              TEXT_SPRINT string ~%string% %value%~
+            END
+          END
+          // checking whether column has to be added
+          PATCH_IF (INDEX(~[^ %TAB%$]~ ~%string%~) >= 0) BEGIN
+            TEXT_SPRINT $columns(~%columns%~) ~%string%~
+            SET columns += 1
+          END
+        END
+      BUT_ONLY
+
+      OUTER_FOR (col = 0; col < columns; ++col) BEGIN
+        OUTER_TEXT_SPRINT string $columns(~%col%~)
+        APPEND_COL ~%resref%.2DA~ ~%string%~
+      END
+
+      // adding QD_MULTI row
       OUTER_TEXT_SPRINT line ~QD_MULTI   ~
       OUTER_FOR (i = 1; i < 51; ++i) BEGIN
         ACTION_IF (i < 10) BEGIN
@@ -173,6 +209,10 @@ ACTION_IF (NOT FILE_EXISTS_IN_GAME ~qd_multi.qd~) BEGIN
         END
       END
       APPEND ~%resref%.2DA~ ~%line%~
+
+      COPY_EXISTING ~%resref%.2DA~ ~override~
+        PRETTY_PRINT_2DA
+      BUT_ONLY
     END
   END
 
