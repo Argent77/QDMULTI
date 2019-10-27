@@ -291,6 +291,12 @@ END
 // All multiclass kittable files should exist before calling ADD_KIT
 LAF QD_ENSURE_KITTABLE END
 
+// Prepare all multiclass-related spell and table configurations in advance
+ACTION_FOR_EACH base_class IN ~D~ ~F~ ~M~ ~P~ ~R~ ~T~ BEGIN
+  LAF QD_ENSURE_QDMC_SPL STR_VAR base_class END
+  LAF QD_ENSURE_BASE_CLAB STR_VAR base_class END
+END
+
 
 DEFINE_ACTION_FUNCTION qd_multiclass
 STR_VAR
@@ -425,7 +431,6 @@ BEGIN
     // parse kit clab and assign abilities to spell effects
     ACTION_IF (NOT ~%kit_clab%~ STR_EQ ~~ AND
                FILE_EXISTS_IN_GAME ~%kit_clab%.2DA~) BEGIN
-      ACTION_CLEAR_ARRAY ~token_cache~  // collects affected base class CLABs for later update
       COPY_EXISTING ~%kit_clab%.2da~ ~override~
         READ_2DA_ENTRIES_NOW rows 1
         READ_2DA_ENTRY_FORMER rows 1 0 default
@@ -453,9 +458,6 @@ BEGIN
                     ~GA_~ => ~QD_MC_GA~
                   END
                   PATCH_IF (VARIABLE_IS_SET $abil_types(~%abil_type%~)) BEGIN
-                    // mark base class CLAB for update
-                    SET $token_cache(~%class_token%~) = 1
-
                     // granted abilities or bonuses
                     TEXT_SPRINT qdmc_eff_resref $abil_types(~%abil_type%~)
                     INNER_ACTION BEGIN
@@ -467,7 +469,6 @@ BEGIN
                       END ELSE BEGIN
                         OUTER_TEXT_SPRINT qdmc_spl_resref ~QD_MC%class_token%%col%~
                       END
-                      LAF QD_ENSURE_QDMC_SPL STR_VAR base_class = EVAL ~%class_token%~ END
                       COPY_EXISTING ~%qdmc_spl_resref%.SPL~ ~override~
                         LPF ADD_SPELL_EFFECT
                           INT_VAR insert_point = 0 opcode = 177 target = 1 timing = 9 resist_dispel = 0 power = 0 parameter1 = kit_id parameter2 = 9
@@ -487,11 +488,6 @@ BEGIN
           END
         END
       BUT_ONLY
-
-      // make all marked base class CLABs multiclass-ready
-      ACTION_PHP_EACH token_cache AS token => _ BEGIN
-        LAF QD_ENSURE_BASE_CLAB STR_VAR base_class = EVAL ~%token%~ RET success clab_resref END
-      END
     END ELSE BEGIN
       WARN ~WARNING: Could not find kit ability table [%kit_clab%.2da]. Skipping.~
     END
